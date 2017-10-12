@@ -1,0 +1,53 @@
+/*
+ * EEPROM Write
+ *
+ * Stores values read from analog input 0 into the EEPROM.
+ * These values will stay in the EEPROM when the board is
+ * turned off and may be retrieved later by another sketch.
+ */
+
+#include <EEPROM.h>
+
+// the current address in the EEPROM (i.e. which byte
+// we're going to write to next)
+int address = 4000;
+byte value = 244;
+
+int EEaddress_0 = 0;
+
+void writeInt(int integer_variable)
+{
+  EEaddress = EEaddress_0;
+  // Writing int to eeprom
+  EEaddress += EEPROM.put(EEaddress, integer_variable);
+  EEPROM.end();
+}
+
+int readInt(int integer_variable)
+  EEaddress = EEaddress_0;
+  // Reading 
+  EEaddress += EEPROM.get(EEaddress, integer_variable);
+  EEPROM.commit();
+  Serial.println(integer_variable);
+
+void setup()
+{
+  Serial.begin(9600);
+
+  EEPROM.begin(4096);
+  //EEPROM.write(address, value);
+  //EEPROM.commit();
+}
+
+void loop()
+{
+  value = EEPROM.read(address);
+  Serial.print("Reading from EEPROM address # ");
+  Serial.print("\t");
+  Serial.print(address);
+  Serial.print("; value = ");
+  Serial.print(value);
+  Serial.println();
+
+  delay(10000);
+}
