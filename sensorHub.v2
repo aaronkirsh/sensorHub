@@ -5,23 +5,19 @@
 
 // V1.0 : Sends sensor data to blynk from DHT22, 2 DS temp probes, and 150 psi pressure transducer
 // V1.1 : Added WifiManager, OTA upload, offline functionality of timers and automated reconnect
-
-// ESP8266 VIRTUAL PIN MAP:
-  // V0 = DHT22 probe, humidity
-  // V1 = DHT22 probe, temperature
-  // V2 = DS probe 1, temperature
-  // V3 = DS probe 2, temperature 
-  // V4 = water pressure transducer, psi
-
- // Bridged values
-  // V19 = bridge widget
-  // V20 = DHT22 probe, humidity
-  // V21 = DHT22 probe, temperature
-  // V22 = DS probe 1, temperature
-  // V23 = DS probe 2, temperature 
-  // V24 = water pressure transducer, psi
+// V2.0 : Switched to using same auth code for everything, adjusted frequencies
 
 
+// ESP8266 Wireless Sensor Hub VIRTUAL PIN MAP:
+  // V60 = DHT22 probe, humidity
+  // V61 = DHT22 probe, temperature
+  // V62 = DS probe 1, temperature
+  // V63 = DS probe 2, temperature 
+  // V64 = water pressure transducer, psi
+
+
+#define BLYNK_PRINT Serial // Defines the object that is used for printing
+#define BLYNK_DEBUG        // Optional, this enables more detailed prints
 #include <ESP8266WiFi.h> // Needed for wifi on ESP8266
 #include <ESP8266mDNS.h> // Needed for OTA upload
 #include <ArduinoOTA.h>  // Needed for OTA upload
@@ -34,27 +30,28 @@
 #include <DHT.h> // for DHT22 temp/humidity probe
 #include <OneWire.h> // for DS temp probe
 #include <DallasTemperature.h> // for DS temp probe
-
+#include <WidgetRTC.h>
 
 // Blynk auth code
-char auth[] = "6a8e3ef4c8204f6b88b7bbecb8c75167";
+char auth[] = "****************";
 // Blynk timer
 BlynkTimer timer;
+WidgetRTC rtc;
 
 // WiFi credentials will be configured using WifiManager in setup()
 
 // Frequency settings //
-unsigned int myServerTimeout  =  3500;  //  3.5s server connection timeout (SCT)
-unsigned int myWiFiTimeout    =  3200;  //  3.2s WiFi connection timeout   (WCT)
-unsigned int blynkInterval    = 25000;  // 25.0s check server frequency    (CSF)
-unsigned int sensorInterval =  2500;  //  2.5s function call frequency   (FCF)
+unsigned int myServerTimeout          =  3500;  //  3.5s server connection timeout (SCT)
+unsigned int myWiFiTimeout            =  3200;  //  3.2s WiFi connection timeout   (WCT)
+unsigned int blynkInterval            = 29527;  //  29.527s check server frequency    (CSF)
+unsigned int sensorIntervalDHT        =  5333;  //  5.s DHT sensor frequency   (FCF)
+unsigned int sensorIntervalDS         =  4999;  //  4.999s DS sensor frequency   (FCF)
+unsigned int sensorIntervalPressure   =  293;  //  0.293s pressure sensor frequency   (FCF)
 // End Frequency settings //
 
-// Bridge widget on virtual pin 19
-WidgetBridge bridge1(V19);
-// Bridge sensor values to the brain relay box
 BLYNK_CONNECTED() {
- bridge1.setAuthToken("7fb8907ed38f4985a9e9771a01bab4ee"); // Auth code for "The brain" relay box
+  rtc.begin();
+  Blynk.syncAll();
 }
 
 // DHT settings
@@ -79,7 +76,7 @@ int pressureSensorValue ;  // variable to store the value coming from the sensor
 
 
  // function to 
-void sendSensorData(){
+void sendSensorDataDHT(){
 
   if(Blynk.connected()){
 
@@ -91,16 +88,16 @@ void sendSensorData(){
     if (isnan(h1) || isnan(t1)) {
       Serial.println("Failed to read from DHT sensor!");
     } else {
-        // send to blynk && bridge
-        Blynk.virtualWrite(V0, h1); // V0 = DHT22 probe humidity
-        Blynk.virtualWrite(V1, t1); // V1 = DHT22 probe temperature
-        // bridge1.virtualWrite(V20, h1); // V20 = DHT22 probe humidity
-        // delay(50);
-        // bridge1.virtualWrite(V21, t1); // V21 = DHT22 probe temperature
-        // delay(50);
+        // send to blynk
+        Blynk.virtualWrite(V60, h1); // V0 = DHT22 probe humidity
+        Blynk.virtualWrite(V61, t1); // V1 = DHT22 probe temperature
     }
+  }
+}
+ // function to 
+void sendSensorDataDS(){
 
-
+  if(Blynk.connected()){
   // function to Push DS Sensor data to Blynk //
     // request to all sensors
     sensors.requestTemperatures();
@@ -113,9 +110,8 @@ void sendSensorData(){
     // get temperature
     float tempC1 = sensors.getTempC(insideThermometer);
     float tempF1 = DallasTemperature::toFahrenheit(tempC1);
-    // send to blynk && bridge
-    Blynk.virtualWrite(V2, tempF1); // V2 = DS probe 1 temperature
-    //bridge1.virtualWrite(V22, tempF1); // V22 = DS probe 1 temperature
+    // send to blynk
+    Blynk.virtualWrite(V62, tempF1); // V2 = DS probe 1 temperature
     }
 
     // error check 2
@@ -127,13 +123,16 @@ void sendSensorData(){
     // get temperature
     float tempC2 = sensors.getTempC(outsideThermometer);
     float tempF2 = DallasTemperature::toFahrenheit(tempC2);
-    // send to blynk && bridge
-    Blynk.virtualWrite(V3, tempF2); // V3 = DS probe 2 temperature
-    //bridge1.virtualWrite(V23, tempF2); // V23 = DS probe 2 temperature
+    // send to blynk
+    Blynk.virtualWrite(V63, tempF2); // V3 = DS probe 2 temperature
     }
+  }
+}
 
+ // function to 
+void sendSensorDataPressure(){
 
-
+  if(Blynk.connected()){
   // function to Push water pressure transducer sensor data to Blynk //
     // read the value from the sensor:
     pressureSensorValue = analogRead(sensorPin);
@@ -141,28 +140,24 @@ void sendSensorData(){
     //  error check
     if ( isnan(pressureSensorValue) or ( pressureSensorValue < 0 ) ) {
       Serial.println("Failed to read from water pressure transducer sensor!");
-    } else {
-        // Convert the analog reading (which goes from 0 - 1023) to a voltage (0 - 4.5V):
-        //int voltage = pressureSensorValue * (4.5 / 1023.0);
+    } 
+    else 
+    {
+      // Convert the analog reading (which goes from 0 - 1023) to a voltage (0 - 4.5V):
+      //int voltage = pressureSensorValue * (4.5 / 1023.0);
 
-        // Convert the calculated voltage to psi reading; 0.5v -> 0psi, 4.5v -> 150psi => voltage = (4/150)*psi + 0.5  => psi = (voltage - 0.5)*150 / 4
-        //int psi = (voltage - 0.5) * 150 / 4;
+      // Convert the calculated voltage to psi reading; 0.5v -> 0psi, 4.5v -> 150psi => voltage = (4/150)*psi + 0.5  => psi = (voltage - 0.5)*150 / 4
+      //int psi = (voltage - 0.5) * 150 / 4;
 
-        // convert to analog reading to psi using my empirically derived formula
-          // this should work for 0 psi - 110 psi being read by A0 on D1 mini ESP8266 without an added resistor to make voltage divider.
-        //int psi = ( 0.1238*pressureSensorValue - 18.294 );
-          // this should work for 0 psi - 150 psi being read by A0 on D1 mini ESP8266 with added 180 kohm resistor in series with sensor voltage out to make voltage divider.
-        int psi = ( 0.2*pressureSensorValue - 20 );
+      // convert to analog reading to psi using my empirically derived formula
+        // this should work for 0 psi - 110 psi being read by A0 on D1 mini ESP8266 without an added resistor to make voltage divider.
+      //int psi = ( 0.1238*pressureSensorValue - 18.294 );
+        // this should work for 0 psi - 150 psi being read by A0 on D1 mini ESP8266 with added 180 kohm resistor in series with sensor voltage out to make voltage divider.
+      int psi = ( 0.2*pressureSensorValue - 20 );
 
-
-        // send to blynk && bridge
-        Blynk.virtualWrite(V4, psi); // V4 = water pressure transducer psi
-        bridge1.virtualWrite(V24, psi); // V24 = water pressure transducer psi
-        Blynk.virtualWrite(V5, pressureSensorValue); // V4 = water pressure transducer psi
+      // send to blynk
+      Blynk.virtualWrite(V64, psi); // V4 = water pressure transducer psi
     }
-
-
-
   }
 }
 
@@ -191,7 +186,7 @@ void checkBlynk() {
 
 
 void setup() {
-  Serial.begin(115200);
+  Serial.begin(9600);
 
   Serial.println("Booting");
 
@@ -244,9 +239,14 @@ void setup() {
   Serial.println(WiFi.localIP());
   // End Arduino OTA //
 
-  // Timers //
-  timer.setInterval(blynkInterval, checkBlynk);   // check connection to server per blynkInterval
-  timer.setInterval(sensorInterval, sendSensorData);// send sensor data every sensorInterval
+  // Timers - using prime numbers of seconds to prevent flood..//
+  timer.setInterval(29000L, checkBlynk);   // check connection to server per blynkInterval
+
+  timer.setInterval(sensorIntervalDHT, sendSensorDataDHT);// send sensor data every sensorInterval
+
+  timer.setInterval(sensorIntervalDS, sendSensorDataDS);// send sensor data every sensorInterval
+
+  timer.setInterval(sensorIntervalPressure, sendSensorDataPressure);// send sensor data every sensorInterval
   // End timers //
 
   // Blynk //
@@ -282,9 +282,3 @@ void loop() {
 
   // End  Other code //
 }
-
-
-
-
-
-
